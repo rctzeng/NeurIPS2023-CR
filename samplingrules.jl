@@ -9,19 +9,14 @@ abbrev(sr::CR) = "CR-$(sr.mode)";
 mutable struct CRState
     C;      # active set
     mode;   # 'A': average, 'C': conservative
-    θ_0;
-    CRState(K, mode) = new(collect(1:K), mode, 10^(-5));
+    CRState(K, mode) = new(collect(1:K), mode);
 end
 function start(sr::CR, N, T)
     K = length(N);
     CRState(K, sr.mode);
 end
 function nextsample(sr::CRState, pep, ⋆, N, S, T)
-    K = length(N); 
-    if sum(N) < sr.θ_0 * T
-        return argmin(N);
-    end
-    j = length(sr.C); notC = setdiff(collect(1:K), sr.C);
+    K = length(N); j = length(sr.C); notC = setdiff(collect(1:K), sr.C);
     hμ = [S[k]/N[k] for k=1:K];
     l = sr.C[argmin([hμ[k] for k in sr.C])];
     β = logbar(j)*sum([N[k] for k in sr.C])/(T-sum([N[k] for k in notC]));
@@ -67,13 +62,13 @@ function nextsample(sr::SeqRejState, pep, ⋆, N, S, T)
     j = length(sr.C);
     CN = [N[k] for k in sr.C];
     n_min = argmin(CN);
-    if (CN[n_min] < sr.p[j] * T) || (j==2)
-        return sr.C[n_min];
+    if (j>2) && (CN[n_min] >= sr.p[j] * T)
+        Cμ = [S[k]/N[k] for k in sr.C];
+        l_min = argmin(Cμ);
+        setfield!(sr, :C, filter(v->v!=sr.C[l_min], sr.C));
     end
-    Cμ = [S[k]/N[k] for k in sr.C];
-    l_min = argmin(Cμ);
-    setfield!(sr, :C, filter(v->v!=sr.C[l_min], sr.C));
-    return nextsample(sr, pep, ⋆, N, S, T);
+    CN = [N[k] for k in sr.C];
+    return sr.C[argmin(CN)];
 end
 function decision(sr::SeqRejState, pep, ⋆, N, S, T)
     Cμ = [S[k]/N[k] for k in sr.C];
@@ -90,25 +85,34 @@ abbrev(sr::SeqHalf) = "SH";
 mutable struct SeqHalfState
     C;  # active set
     p;  # budget threshold
-    SeqHalfState(K) = new(collect(1:K), [1/(k*log2(K)) for k=1:K]);
+    N;
+    S;
+    SeqHalfState(K) = new(
+        collect(1:K), 
+        [1/(k*ceil(Int, log2(K))) for k=1:K],
+        [0 for k=1:K],
+        [0 for k=1:K]
+    );
 end
 function start(sr::SeqHalf, N, T)
     SeqHalfState(length(N));
 end
 function nextsample(sr::SeqHalfState, pep, ⋆, N, S, T)
-    j = length(sr.C);
-    CN = [N[k] for k in sr.C];
+    j = length(sr.C); K = length(N);
+    CN = [(N[k]-sr.N[k]) for k in sr.C];
     n_min = argmin(CN);
-    if (CN[n_min] < T * sr.p[j]) || (j==2)
-        return sr.C[n_min];
+    if j>2 && (CN[n_min] >= floor(Int, sr.p[j] * T))
+        Cμ = [(S[k]-sr.S[k])/(N[k]-sr.N[k]) for k in sr.C];
+        Cidx = sortperm(Cμ);
+        setfield!(sr, :C, [sr.C[Cidx[j-i+1]] for i=1:ceil(Int, j/2)]);
+        setfield!(sr, :N, [N[k] for k=1:K]);
+        setfield!(sr, :S, [S[k] for k=1:K]);
     end
-    Cμ = [S[k]/N[k] for k in sr.C];
-    Cidx = sortperm(Cμ);
-    setfield!(sr, :C, [sr.C[Cidx[j-i+1]] for i=1:ceil(Int, j/2)]);
-    return nextsample(sr, pep, ⋆, N, S, T)
+    CN = [(N[k]-sr.N[k]) for k in sr.C];
+    return sr.C[argmin(CN)];
 end
 function decision(sr::SeqHalfState, pep, ⋆, N, S, T)
-    Cμ = [S[k]/N[k] for k in sr.C];
+    Cμ = [(S[k]-sr.S[k])/(N[k]-sr.N[k]) for k in sr.C];
     return sr.C[argmax(Cμ)];
 end
 

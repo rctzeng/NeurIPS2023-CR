@@ -7,7 +7,7 @@ include("experiment_helpers.jl");
 include("runit.jl"); # for types
 
 setting_id, M = parse(Int, ARGS[1]), parse(Int, ARGS[2]);
-# M=K for setting_id∈{1,...,5}, whereas M is as described in Appendix J.6 of the paper
+# M=K for setting_id∈{1,...,6}, whereas M is as described in Appendix J.6 of the paper
 
 df = DataFrame(algorithm=String[], T=Int[], δ=Float32[], K=Int[]);
 if setting_id==1
@@ -60,7 +60,7 @@ elseif setting_id==6
     end
 end
 for Te in Ts
-    fname = "latest-data/setting$(setting_id)_M$(M)_T$(Te).dat";
+    fname = "setting$(setting_id)_M$(M)_T$(Te).dat";
     if isfile(fname)
         @load fname dist μ pep srs data T N seed
         ⋆ = istar(pep, µ); data = getindex.(data, 1); K = length(μ);
@@ -88,14 +88,7 @@ y_max, y_min = maximum(df.δ), minimum(df.δ);
 y_max, y_min = log10(y_max)+0.1, log10(y_min)-0.1;
 fig = plot();
 for algo in ["UG", "SH", "SR", "CR-C", "CR-A"]
-    if algo == "CR-A"
-        nalgo = "NSD-T";
-    elseif algo == "CR-C"
-        nalgo = "NSD-C";
-    else
-        nalgo = algo;
-    end
-    sdf = filter(row->row.algorithm == nalgo, df); sort!(sdf, :T);
+    sdf = filter(row->row.algorithm == algo, df); sort!(sdf, :T);
     plot!(sdf.T, sdf.δ, xlabel="budget", label=algo, yscale=:log10, xtickfont=font, ytickfont=font, legendfont=font, legend=:outertopright, linewidth=1.5, fillalpha=0.15);
 end
 ylims!((10^(y_min), 10^(y_max)));
